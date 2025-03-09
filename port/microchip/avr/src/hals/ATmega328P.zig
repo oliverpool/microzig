@@ -24,10 +24,30 @@ pub fn parse_pin(comptime spec: []const u8) type {
     if (spec[0] != 'P')
         @compileError(invalid_format_msg);
 
+    const io = @field(micro.chip.peripherals, "PORT" ++ spec[1..2]);
     return struct {
-        pub const port: Port = std.meta.stringToEnum(Port, spec[1..2]) orelse @compileError(invalid_format_msg);
-        pub const pin: u3 = std.fmt.parseInt(u3, spec[2..3], 10) catch @compileError(invalid_format_msg);
+        pub const index: u3 = std.fmt.parseInt(u3, spec[2..3], 10) catch @compileError(invalid_format_msg);
+
+        pub const port = &@field(io, "PORT" ++ spec[1..2]);
+        pub const pin = &@field(io, "PIN" ++ spec[1..2]);
+        pub const ddr = &@field(io, "DDR" ++ spec[1..2]);
+
+        pub const legacy = struct {
+            pub const port: Port = std.meta.stringToEnum(Port, spec[1..2]) orelse @compileError(invalid_format_msg);
+            pub const pin: u3 = std.fmt.parseInt(u3, spec[2..3], 10) catch @compileError(invalid_format_msg);
+        };
     };
+}
+
+fn sfr_addr(comptime reg: *volatile u8) u5 {
+    return @intFromPtr(reg) - 0x20;
+}
+
+fn assert5(comptime legacy: u5, comptime updated: u5) void {
+    if (legacy != updated) {
+        @compileLog("legacy", legacy, "updated", updated);
+        @compileError("not equal");
+    }
 }
 
 pub const gpio = struct {
@@ -46,29 +66,39 @@ pub const gpio = struct {
     }
 
     pub fn setOutput(comptime pin: type) void {
-        cpu.sbi(regs(pin).dir_addr, pin.pin);
+        assert5(regs(pin.legacy).dir_addr, sfr_addr(pin.ddr));
+        comptime unreachable;
+        cpu.sbi(sfr_addr(pin.ddr), pin.index);
     }
 
     pub fn setInput(comptime pin: type) void {
-        cpu.cbi(regs(pin).dir_addr, pin.pin);
+        assert5(regs(pin.legacy).dir_addr, sfr_addr(pin.ddr));
+        comptime unreachable;
+        cpu.cbi(sfr_addr(pin.ddr), pin.index);
     }
 
     pub fn read(comptime pin: type) micro.core.experimental.gpio.State {
-        return if ((regs(pin).pin.* & (1 << pin.pin)) != 0)
+        comptime std.debug.assert(regs(pin.legacy).pin == pin.pin);
+        comptime unreachable;
+        return if ((pin.pin.* & (1 << pin.index)) != 0)
             .high
         else
             .low;
     }
 
     pub fn write(comptime pin: type, state: micro.core.experimental.gpio.State) void {
+        assert5(regs(pin.legacy).port_addr, sfr_addr(pin.port));
+        comptime unreachable;
         switch (state) {
-            .high => cpu.sbi(regs(pin).port_addr, pin.pin),
-            .low => cpu.cbi(regs(pin).port_addr, pin.pin),
+            .high => cpu.sbi(sfr_addr(pin.port), pin.index),
+            .low => cpu.cbi(sfr_addr(pin.port), pin.index),
         }
     }
 
     pub fn toggle(comptime pin: type) void {
-        cpu.sbi(regs(pin).pin_addr, pin.pin);
+        assert5(regs(pin.legacy).pin_addr, sfr_addr(pin.pin));
+        comptime unreachable;
+        cpu.sbi(sfr_addr(pin.pin), pin.index);
     }
 };
 

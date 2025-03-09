@@ -13,5 +13,6 @@ pub fn main() void {
     while (true) {
         microzig.core.experimental.debug.busy_sleep(20_000);
         led.toggle();
+        _ = led.read();
     }
 }
