@@ -67,19 +67,16 @@ pub const gpio = struct {
 
     pub fn setOutput(comptime pin: type) void {
         assert5(regs(pin.legacy).dir_addr, sfr_addr(pin.ddr));
-        comptime unreachable;
         cpu.sbi(sfr_addr(pin.ddr), pin.index);
     }
 
     pub fn setInput(comptime pin: type) void {
         assert5(regs(pin.legacy).dir_addr, sfr_addr(pin.ddr));
-        comptime unreachable;
         cpu.cbi(sfr_addr(pin.ddr), pin.index);
     }
 
     pub fn read(comptime pin: type) micro.core.experimental.gpio.State {
         comptime std.debug.assert(regs(pin.legacy).pin == pin.pin);
-        comptime unreachable;
         return if ((pin.pin.* & (1 << pin.index)) != 0)
             .high
         else
@@ -88,7 +85,6 @@ pub const gpio = struct {
 
     pub fn write(comptime pin: type, state: micro.core.experimental.gpio.State) void {
         assert5(regs(pin.legacy).port_addr, sfr_addr(pin.port));
-        comptime unreachable;
         switch (state) {
             .high => cpu.sbi(sfr_addr(pin.port), pin.index),
             .low => cpu.cbi(sfr_addr(pin.port), pin.index),
@@ -97,7 +93,6 @@ pub const gpio = struct {
 
     pub fn toggle(comptime pin: type) void {
         assert5(regs(pin.legacy).pin_addr, sfr_addr(pin.pin));
-        comptime unreachable;
         cpu.sbi(sfr_addr(pin.pin), pin.index);
     }
 };
