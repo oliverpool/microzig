@@ -11,17 +11,64 @@ pub const clock = struct {
     };
 };
 
-pub fn parse_pin(comptime spec: []const u8) type {
-    const invalid_format_msg = "The given pin '" ++ spec ++ "' has an invalid format. Pins must follow the format \"P{Port}{Pin}\" scheme.";
+fn suffix_joined_list_count(t: anytype, comptime prefix: []const u8) usize {
+    var n: usize = 0;
+    var l: usize = 0;
+    inline for (@typeInfo(t).Struct.decls) |decl| {
+        if (decl.name.len < prefix.len) {
+            continue;
+        }
+        if (!std.mem.eql(u8, decl.name[0..prefix.len], prefix)) {
+            continue;
+        }
+        l += decl.name.len - prefix.len;
+        n += 1;
+    }
 
+    return l + (n - 1);
+}
+
+fn suffix_joined_list(t: anytype, comptime prefix: []const u8) *const [suffix_joined_list_count(t, prefix):0]u8 {
+    var buf: [suffix_joined_list_count(t, prefix):0]u8 = undefined;
+
+    var i: usize = 0;
+    inline for (@typeInfo(t).Struct.decls) |decl| {
+        if (decl.name.len < prefix.len) {
+            continue;
+        }
+        if (!std.mem.eql(u8, decl.name[0..prefix.len], prefix)) {
+            continue;
+        }
+        if (i > 0) {
+            buf[i] = ',';
+            i += 1;
+        }
+        std.mem.copyForwards(u8, buf[i..], decl.name[prefix.len..]);
+        i += decl.name.len - prefix.len;
+    }
+
+    const final = buf;
+    return &final;
+}
+
+pub fn compileErrorPin(comptime spec: []const u8) void {
+    @compileError(std.fmt.comptimePrint("The given pin '{s}' has an invalid format. Pins must follow the format \"P{{{s}}}{{0-9}}\" scheme.", .{
+        spec,
+        suffix_joined_list(micro.chip.peripherals, "PORT"),
+    }));
+}
+
+pub fn parse_pin(comptime spec: []const u8) type {
     if (spec.len != 3)
-        @compileError(invalid_format_msg);
+        compileErrorPin(spec);
     if (spec[0] != 'P')
-        @compileError(invalid_format_msg);
+        compileErrorPin(spec);
+    if (!@hasField(micro.chip.peripherals, "PORT" ++ spec[1..2]) and !@hasDecl(micro.chip.peripherals, "PORT" ++ spec[1..2]))
+        compileErrorPin(spec);
 
     const io = @field(micro.chip.peripherals, "PORT" ++ spec[1..2]);
     return struct {
-        pub const index: u3 = std.fmt.parseInt(u3, spec[2..3], 10) catch @compileError(invalid_format_msg);
+        pub const index: u3 = std.fmt.parseInt(u3, spec[2..3], 10) catch compileErrorPin(spec);
 
         pub const port = &@field(io, "PORT" ++ spec[1..2]);
         pub const pin = &@field(io, "PIN" ++ spec[1..2]);
