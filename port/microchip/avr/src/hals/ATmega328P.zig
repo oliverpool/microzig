@@ -4,11 +4,6 @@ const peripherals = micro.chip.peripherals;
 const USART0 = peripherals.USART0;
 
 pub const cpu = micro.cpu;
-const Port = enum(u8) {
-    B = 1,
-    C = 2,
-    D = 3,
-};
 
 pub const clock = struct {
     pub const Domain = enum {
@@ -31,11 +26,6 @@ pub fn parse_pin(comptime spec: []const u8) type {
         pub const port = &@field(io, "PORT" ++ spec[1..2]);
         pub const pin = &@field(io, "PIN" ++ spec[1..2]);
         pub const ddr = &@field(io, "DDR" ++ spec[1..2]);
-
-        pub const legacy = struct {
-            pub const port: Port = std.meta.stringToEnum(Port, spec[1..2]) orelse @compileError(invalid_format_msg);
-            pub const pin: u3 = std.fmt.parseInt(u3, spec[2..3], 10) catch @compileError(invalid_format_msg);
-        };
     };
 }
 
@@ -43,40 +33,16 @@ fn sfr_addr(comptime reg: *volatile u8) u5 {
     return @intFromPtr(reg) - 0x20;
 }
 
-fn assert5(comptime legacy: u5, comptime updated: u5) void {
-    if (legacy != updated) {
-        @compileLog("legacy", legacy, "updated", updated);
-        @compileError("not equal");
-    }
-}
-
 pub const gpio = struct {
-    fn regs(comptime desc: type) type {
-        return struct {
-            // io address
-            const pin_addr: u5 = 3 * @intFromEnum(desc.port) + 0x00;
-            const dir_addr: u5 = 3 * @intFromEnum(desc.port) + 0x01;
-            const port_addr: u5 = 3 * @intFromEnum(desc.port) + 0x02;
-
-            // ram mapping
-            const pin = @as(*volatile u8, @ptrFromInt(0x20 + @as(usize, pin_addr)));
-            const dir = @as(*volatile u8, @ptrFromInt(0x20 + @as(usize, dir_addr)));
-            const port = @as(*volatile u8, @ptrFromInt(0x20 + @as(usize, port_addr)));
-        };
-    }
-
     pub fn setOutput(comptime pin: type) void {
-        assert5(regs(pin.legacy).dir_addr, sfr_addr(pin.ddr));
         cpu.sbi(sfr_addr(pin.ddr), pin.index);
     }
 
     pub fn setInput(comptime pin: type) void {
-        assert5(regs(pin.legacy).dir_addr, sfr_addr(pin.ddr));
         cpu.cbi(sfr_addr(pin.ddr), pin.index);
     }
 
     pub fn read(comptime pin: type) micro.core.experimental.gpio.State {
-        comptime std.debug.assert(regs(pin.legacy).pin == pin.pin);
         return if ((pin.pin.* & (1 << pin.index)) != 0)
             .high
         else
@@ -84,7 +50,6 @@ pub const gpio = struct {
     }
 
     pub fn write(comptime pin: type, state: micro.core.experimental.gpio.State) void {
-        assert5(regs(pin.legacy).port_addr, sfr_addr(pin.port));
         switch (state) {
             .high => cpu.sbi(sfr_addr(pin.port), pin.index),
             .low => cpu.cbi(sfr_addr(pin.port), pin.index),
@@ -92,7 +57,6 @@ pub const gpio = struct {
     }
 
     pub fn toggle(comptime pin: type) void {
-        assert5(regs(pin.legacy).pin_addr, sfr_addr(pin.pin));
         cpu.sbi(sfr_addr(pin.pin), pin.index);
     }
 };
